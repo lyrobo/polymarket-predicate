@@ -1,0 +1,215 @@
+================================================================================
+POLYMARKET TRADER ANALYSIS: Agile-Spacing
+Address: 0xcE25E214D5cfE4f459cf67F08DF581885AAE7Fdc
+Generated: 2026-05-25 ~15:22 UTC
+================================================================================
+
+PORTFOLIO VALUE: ~$1,283 (fluctuating as markets are still open)
+
+================================================================================
+INDIVIDUAL TRADE ENTRIES (96 most recent, all from 11:15-11:30AM ET window)
+================================================================================
+
+All trades are BUYS (no CLOB sells — trader holds to maturity and redeems winners).
+
+--- BTC 15m (btc-updown-15m-1779722100): 46 trades ---
+UP side (23 trades, 843.2 shares, $375.04 invested, VWAP $0.4333):
+  15:15:13  BUY 12.00 @ $0.3900 = $4.68
+  15:15:13  BUY 12.00 @ $0.3900 = $4.68
+  15:15:13  BUY  5.00 @ $0.3900 = $1.95
+  15:15:13  BUY  6.20 @ $0.3900 = $2.42
+  15:15:13  BUY 10.00 @ $0.3900 = $3.90
+  15:15:13  BUY  5.00 @ $0.3900 = $1.95
+  15:15:13  BUY  5.00 @ $0.3900 = $1.95
+  15:15:41  BUY 26.00 @ $0.4000 = $10.84
+  15:16:14  BUY 93.08 @ $0.3756 = $36.49
+  15:16:14  BUY 57.00 @ $0.3800 = $22.60
+  15:17:03  BUY 28.51 @ $0.3700 = $11.01
+  15:17:17  BUY 18.00 @ $0.4300 = $8.05
+  15:18:27  BUY 17.54 @ $0.4300 = $7.54
+  15:18:29  BUY  5.00 @ $0.4300 = $2.15
+  15:18:36  BUY 73.45 @ $0.4300 = $31.58
+  15:19:09  BUY 27.00 @ $0.4700 = $13.16
+  15:19:15  BUY 45.00 @ $0.5500 = $25.53
+  15:19:15  BUY 42.42 @ $0.5300 = $23.22
+  15:19:16  BUY 42.24 @ $0.5600 = $24.38
+  15:19:20  BUY 171.80 @ $0.6264 = $110.43
+  15:20:40  BUY 10.00 @ $0.2100 = $2.22
+  15:20:58  BUY 35.00 @ $0.1900 = $7.03
+  15:21:14  BUY 96.00 @ $0.1800 = $17.28
+
+DOWN side (23 trades, 859.7 shares, $554.91 invested, VWAP $0.6330):
+  15:15:22  BUY 19.00 @ $0.7200 = $13.95
+  15:15:57  BUY  5.00 @ $0.6000 = $3.08
+  15:16:07  BUY 96.00 @ $0.5900 = $56.64
+  15:16:30  BUY 20.00 @ $0.6000 = $12.34
+  15:16:39  BUY 92.00 @ $0.6400 = $60.36
+  15:17:49  BUY  5.95 @ $0.5800 = $3.55
+  15:19:32  BUY 26.00 @ $0.4600 = $12.41
+  15:19:32  BUY  9.84 @ $0.3800 = $3.90
+  15:19:43  BUY 33.00 @ $0.5000 = $17.08
+  15:19:43  BUY 57.43 @ $0.4800 = $28.57
+  15:19:46  BUY 63.96 @ $0.5553 = $36.62
+  15:20:12  BUY 37.00 @ $0.6100 = $23.19
+  15:20:14  BUY 70.00 @ $0.6000 = $43.18
+  15:20:19  BUY 49.00 @ $0.6100 = $30.71
+  15:20:25  BUY  6.00 @ $0.6500 = $4.00
+  15:20:25  BUY 62.99 @ $0.6600 = $42.56
+  15:20:26  BUY  6.16 @ $0.7000 = $4.40
+  15:20:30  BUY 82.00 @ $0.7200 = $60.20
+  15:20:35  BUY  2.44 @ $0.7700 = $1.88
+  15:20:35  BUY 12.78 @ $0.7700 = $9.84
+  15:21:01  BUY 20.00 @ $0.8200 = $16.61
+  15:21:21  BUY 19.41 @ $0.8400 = $16.30
+  15:21:21  BUY 63.75 @ $0.8400 = $53.55
+
+--- ETH 15m (eth-updown-15m-1779722100): 28 trades ---
+UP side (16 trades, 238.9 shares, $112.42 invested, VWAP $0.4581):
+  15:15:11  BUY 40.00 @ $0.4200 = $17.48
+  15:15:24  BUY 24.00 @ $0.3200 = $8.05
+  15:15:50  BUY  8.20 @ $0.4000 = $3.28
+  15:15:55  BUY 16.67 @ $0.4000 = $6.67
+  15:15:55  BUY  5.00 @ $0.4000 = $2.00
+  15:17:19  BUY  0.99 @ $0.4600 = $0.47
+  15:17:21  BUY  0.43 @ $0.4700 = $0.21
+  15:17:23  BUY  9.60 @ $0.4700 = $4.68
+  15:17:24  BUY 10.00 @ $0.4600 = $4.77
+  15:18:05  BUY 24.00 @ $0.4800 = $11.94
+  15:18:06  BUY  4.57 @ $0.4700 = $2.15
+  15:18:12  BUY 30.00 @ $0.4700 = $14.10
+  15:19:08  BUY  0.27 @ $0.5000 = $0.14
+  15:19:09  BUY 55.00 @ $0.5300 = $30.11
+  15:19:18  BUY  0.60 @ $0.5800 = $0.36
+  15:19:22  BUY  9.60 @ $0.6100 = $6.02
+
+DOWN side (12 trades, 205.2 shares, $120.94 invested, VWAP $0.5735):
+  15:17:00  BUY 18.00 @ $0.6300 = $11.63
+  15:19:01  BUY  5.00 @ $0.5100 = $2.64
+  15:19:41  BUY  5.00 @ $0.4100 = $2.13
+  15:19:43  BUY 27.11 @ $0.4482 = $12.62
+  15:19:48  BUY 14.60 @ $0.4700 = $7.12
+  15:19:53  BUY  7.69 @ $0.4800 = $3.69
+  15:19:53  BUY 22.00 @ $0.4900 = $11.16
+  15:20:18  BUY 15.00 @ $0.5400 = $8.36
+  15:20:25  BUY 12.07 @ $0.5780 = $7.18
+  15:20:26  BUY 27.00 @ $0.6500 = $17.98
+  15:20:30  BUY  9.60 @ $0.6500 = $6.39
+  15:20:32  BUY 42.14 @ $0.6977 = $30.02
+
+--- SOL 15m (sol-updown-15m-1779722100): 14 trades ---
+UP side (5 trades, 86.3 shares, $39.68 invested, VWAP $0.4456):
+  15:15:25  BUY 25.64 @ $0.3802 = $10.17
+  15:19:08  BUY 20.00 @ $0.4800 = $9.95
+  15:19:20  BUY 20.00 @ $0.5900 = $12.14
+  15:20:42  BUY  8.00 @ $0.3900 = $3.25
+  15:21:08  BUY 12.61 @ $0.3300 = $4.16
+
+DOWN side (9 trades, 143.4 shares, $83.66 invested, VWAP $0.5710):
+  15:16:41  BUY 23.00 @ $0.6900 = $16.21
+  15:16:41  BUY 13.80 @ $0.6800 = $9.59
+  15:18:13  BUY 28.00 @ $0.5300 = $14.84
+  15:19:32  BUY  5.00 @ $0.4000 = $2.08
+  15:20:12  BUY 19.12 @ $0.4967 = $9.83
+  15:20:18  BUY  6.84 @ $0.4800 = $3.28
+  15:20:25  BUY  5.00 @ $0.5300 = $2.74
+  15:20:25  BUY 26.62 @ $0.5600 = $15.37
+  15:20:32  BUY 16.00 @ $0.5900 = $9.71
+
+--- XRP 15m (xrp-updown-15m-1779722100): 8 trades ---
+UP side (5 trades, 53.6 shares, $25.48 invested, VWAP $0.4648):
+  15:15:25  BUY 13.14 @ $0.3662 = $5.02
+  15:18:26  BUY  2.42 @ $0.4800 = $1.16
+  15:19:16  BUY  5.00 @ $0.6100 = $3.13
+  15:19:18  BUY 18.00 @ $0.6400 = $11.81
+  15:21:01  BUY 15.00 @ $0.2900 = $4.35
+
+DOWN side (3 trades, 55.7 shares, $32.46 invested, VWAP $0.5659):
+  15:19:48  BUY 23.45 @ $0.5100 = $12.37
+  15:19:48  BUY  5.00 @ $0.5100 = $2.64
+  15:20:32  BUY 27.25 @ $0.6243 = $17.46
+
+================================================================================
+PnL BREAKDOWN BY MARKET (Current Unrealized)
+================================================================================
+
+Market: Bitcoin Up or Down - May 25, 11:15AM-11:30AM ET
+  DOWN side: Entry $0.6329 → Current $0.8149 | PnL: +$156.39 (+28.74%) 🟢
+  UP side:   Entry $0.4241 → Current $0.1850 | PnL: -$208.35 (-56.38%) 🔴
+  NET PnL: -$51.96
+
+Market: Ethereum Up or Down - May 25, 11:15AM-11:30AM ET
+  DOWN side: Entry $0.5735 → Current $0.7550 | PnL: +$37.24 (+31.65%) 🟢
+  UP side:   Entry $0.3729 → Current $0.2450 | PnL: -$41.96 (-34.31%) 🔴
+  NET PnL: -$4.72
+
+Market: Solana Up or Down - May 25, 11:15AM-11:30AM ET
+  DOWN side: Entry $0.5710 → Current $0.6550 | PnL: +$12.04 (+14.71%) 🟢
+  UP side:   Entry $0.4455 → Current $0.3449 | PnL: -$8.68 (-22.59%) 🔴
+  NET PnL: +$3.36
+
+Market: XRP Up or Down - May 25, 11:15AM-11:30AM ET
+  DOWN side: Entry $0.5659 → Current $0.7050 | PnL: +$7.75 (+24.57%) 🟢
+  UP side:   Entry $0.3511 → Current $0.2950 | PnL: -$4.39 (-15.99%) 🔴
+  NET PnL: +$3.36
+
+TOTAL UNREALIZED PnL: -$49.96
+  Winners: BTC Down (+$156), ETH Down (+$37), SOL Down (+$12), XRP Down (+$8)
+  Losers:  BTC Up (-$208), ETH Up (-$42), SOL Up (-$9), XRP Up (-$4)
+
+================================================================================
+TIMING PATTERNS
+================================================================================
+- Trade window: 15:15:11 → 15:21:21 UTC (6 minutes 10 seconds, 96 trades)
+- Average gap between trades: 3.9 seconds
+- 70.5% of trades had <5 seconds between them
+- Min gap: 0 seconds (concurrent trades in different markets)
+- Max gap: 25 seconds
+- This is clearly a HIGH-FREQUENCY automated bot
+
+================================================================================
+SIZING PATTERNS
+================================================================================
+- Share size range: 0.27 to 171.80 shares
+- USD size range: $0.14 to $110.43 per trade
+- Average USD size: ~$14.01
+- Median USD size: ~$9.71
+- Uses many small orders to build positions without excessive slippage
+
+================================================================================
+MARKET DISTRIBUTION
+================================================================================
+- BTC 15m: 46 trades (47.9%) — largest allocation
+- ETH 15m: 28 trades (29.2%)
+- SOL 15m: 14 trades (14.6%)
+- XRP 15m:  8 trades  (8.3%)
+
+================================================================================
+KEY OBSERVATIONS
+================================================================================
+
+1. DELTA-NEUTRAL MARKET MAKING: The trader takes positions on BOTH sides
+   (Up AND Down) of every market. This is a classic market-making / volatility
+   arbitrage strategy. They profit when one side's gains exceed the other's losses.
+
+2. BUY-AND-REDEEM: All visible trades are BUYS. The trader never sells on the
+   CLOB orderbook. They accumulate tokens and redeem winners at maturity.
+   This is tax-efficient (no CLOB fees on sells).
+
+3. BOT-DRIVEN: The execution pattern (70% of trades within 5 seconds, clusters
+   of many small orders at the same price) is definitively algorithmic.
+
+4. LIQUIDITY PROVISION: By placing many limit orders at various price levels
+   (seen in the stair-step price entries), the trader is effectively making
+   markets and capturing the bid-ask spread.
+
+5. CONCENTRATED EXPOSURE: In the current window, the trader is heavily skewed
+   toward BTC Down (VWAP $0.6330 entry with current $0.8149 price), which is
+   the big winner so far.
+
+6. SMALL HISTORICAL TRACES: There are 9 tiny redeemable positions from earlier
+   dates (May 12-25) with negligible PnL (±$0.02-$0.20 each), suggesting this
+   account may have been dormant or testing before the current active window.
+
+7. PORTFOLIO VOLATILITY: Observed portfolio value changed from $423 → $476 →
+   $1,102 → $1,149 → $1,283 within ~5 minutes, indicating the markets are
+   still live and the 11:15-11:30AM ET window hasn't resolved yet.

@@ -1,0 +1,12 @@
+.env
+.env.*
+*.db
+logs/
+data/*.db
+data/*.json
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+*.pid
+node_modules/

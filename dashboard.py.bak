@@ -1,0 +1,858 @@
+#!/usr/bin/env python3
+"""
+BTC Predictor Trading Dashboard
+================================
+Simple web dashboard for displaying Polymarket trading records.
+Runs on remote server, reads from synced SQLite database.
+
+Usage:
+    python3 dashboard.py [--port PORT] [--db PATH]
+"""
+
+import json
+import os
+import sqlite3
+import logging
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+from datetime import datetime, timezone
+from urllib.parse import urlparse, parse_qs
+
+PORT = int(os.environ.get("DASHBOARD_PORT", "8766"))
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "btc_predictor.db")
+LOG_DIR = os.path.dirname(os.path.abspath(__file__))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler(os.path.join(LOG_DIR, "dashboard.log")),
+        logging.StreamHandler(),
+    ]
+)
+logger = logging.getLogger(__name__)
+
+
+def get_db():
+    """Get database connection with Row factory."""
+    if not os.path.exists(DB_PATH):
+        return None
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def get_trades(limit=100, offset=0):
+    """Get recent trades."""
+    conn = get_db()
+    if not conn:
+        return [], 0
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM real_trades ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+            (limit, offset)
+        )
+        trades = [dict(row) for row in cursor.fetchall()]
+        total = conn.execute("SELECT COUNT(*) FROM real_trades").fetchone()[0]
+        return trades, total
+    except sqlite3.OperationalError:
+        return [], 0
+    finally:
+        conn.close()
+
+
+def resolve_markets():
+    """Resolve markets using CLOB API for accurate settlement results."""
+    import urllib.request
+    import json
+    import time
+    
+    conn = get_db()
+    if not conn:
+        return
+    
+    try:
+        # Get matched trades that haven't been resolved
+        cursor = conn.execute(
+            "SELECT * FROM real_trades WHERE status = 'matched' AND (pnl IS NULL OR pnl = 0)"
+        )
+        trades = cursor.fetchall()
+        
+        if not trades:
+            return
+        
+        resolved_count = 0
+        for trade in trades:
+            t = dict(trade)
+            order_id = t.get('order_id', '')
+            if not order_id:
+                continue
+            
+            # Query CLOB API for market resolution
+            try:
+                # Extract market address from order_id (first 42 chars = 0x + 40 hex)
+                market_addr = order_id[:42] if len(order_id) >= 42 else ''
+                
+                if not market_addr or not market_addr.startswith('0x'):
+                    continue
+                
+                url = f"https://clob.polymarket.com/markets/{market_addr}"
+                req = urllib.request.Request(url, headers={"User-Agent": "BTC-Predictor/1.0"})
+                
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    data = json.loads(resp.read().decode())
+                    
+                    # Check if market is closed and has resolution
+                    if not data.get('closed'):
+                        continue
+                    
+                    # Get winning outcome from tokens
+                    tokens = data.get('tokens', [])
+                    if not tokens:
+                        continue
+                    
+                    # Find winning token
+                    winning_outcome = None
+                    for token in tokens:
+                        if token.get('winner') == True:
+                            winning_outcome = token.get('outcome', '')
+                            break
+                    
+                    if not winning_outcome:
+                        continue
+                    
+                    # Determine if trade won
+                    direction = t.get('direction', '')
+                    size = t.get('size', 0)
+                    entry_price = t.get('price', 0)
+                    
+                    # For BTC up/down markets: outcome is "Up" or "Down"
+                    won = (winning_outcome.lower() == direction.lower())
+                    
+                    # Calculate PnL
+                    if won:
+                        # Winning shares pay $1 each
+                        payout = size * 1.0
+                        pnl = payout - (entry_price * size)
+                    else:
+                        pnl = -(entry_price * size)  # Loss = cost
+                    
+                    # Update trade
+                    conn.execute(
+                        "UPDATE real_trades SET pnl = ?, status = 'filled' WHERE id = ?",
+                        (round(pnl, 4), t['id'])
+                    )
+                    resolved_count += 1
+                    logger.info(f"Resolved trade {t['id']}: {direction} vs {winning_outcome} (won={won}, pnl={pnl:.2f})")
+                    
+            except Exception as e:
+                logger.warning(f"Failed to resolve trade {t['id']}: {e}")
+                continue
+        
+        if resolved_count > 0:
+            conn.commit()
+            logger.info(f"Resolved {resolved_count} markets via CLOB API")
+        
+    except Exception as e:
+        logger.error(f"Error resolving markets: {e}")
+    finally:
+        conn.close()
+
+
+def get_stats():
+    """Get trading statistics."""
+    conn = get_db()
+    if not conn:
+        return {}
+    try:
+        stats = {}
+        
+        # Total trades
+        # Filled trades (include both 'filled' and 'matched')
+        stats["filled_trades"] = conn.execute(
+            "SELECT COUNT(*) FROM real_trades WHERE status IN ('filled', 'matched')"
+        ).fetchone()[0]
+        
+        # Total PnL (include both 'filled' and 'matched')
+        pnl_row = conn.execute(
+            "SELECT COALESCE(SUM(pnl), 0) as total_pnl FROM real_trades WHERE status IN ('filled', 'matched')"
+        ).fetchone()
+        stats["total_pnl"] = float(pnl_row["total_pnl"])
+        
+        # Win rate (include both 'filled' and 'matched')
+        if stats["filled_trades"] > 0:
+            wins = conn.execute(
+                "SELECT COUNT(*) FROM real_trades WHERE status IN ('filled', 'matched') AND pnl > 0"
+            ).fetchone()[0]
+            stats["win_rate"] = round(wins / stats["filled_trades"] * 100, 1)
+        else:
+            stats["win_rate"] = 0.0
+        
+        # Recent trades (last 24h)
+        yesterday = (datetime.now(timezone.utc) - __import__('datetime').timedelta(days=1)).isoformat()
+        stats["trades_24h"] = conn.execute(
+            "SELECT COUNT(*) FROM real_trades WHERE timestamp > ?", (yesterday,)
+        ).fetchone()[0]
+        
+        # Average edge (include both 'filled' and 'matched')
+        edge_row = conn.execute(
+            "SELECT COALESCE(AVG(edge), 0) as avg_edge FROM real_trades WHERE status IN ('filled', 'matched')"
+        ).fetchone()
+        stats["avg_edge"] = round(float(edge_row["avg_edge"]), 2)
+        
+        # Direction breakdown
+        directions = conn.execute(
+            "SELECT direction, COUNT(*) as count FROM real_trades GROUP BY direction"
+        ).fetchall()
+        stats["directions"] = {row["direction"]: row["count"] for row in directions}
+        
+        return stats
+    except sqlite3.OperationalError:
+        return {}
+    finally:
+        conn.close()
+
+
+def get_all_trades(limit=50, offset=0, filter_type='all'):
+    """Get all trades with filtering and pagination."""
+    conn = get_db()
+    if not conn:
+        return [], 0
+    try:
+        # Build query based on filter
+        base_query = "SELECT * FROM real_trades WHERE 1=1"
+        count_query = "SELECT COUNT(*) FROM real_trades WHERE 1=1"
+        params = []
+        
+        if filter_type == 'resolved':
+            base_query += " AND status IN ('filled', 'matched')"
+            count_query += " AND status IN ('filled', 'matched')"
+        elif filter_type == 'open':
+            base_query += " AND status = 'live'"
+            count_query += " AND status = 'live'"
+        elif filter_type == 'UP':
+            base_query += " AND direction = 'Up'"
+            count_query += " AND direction = 'Up'"
+        
+        # Get total count
+        total = conn.execute(count_query, params).fetchone()[0]
+        
+        # Get trades
+        query = base_query + " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        cursor = conn.execute(query, params + [limit, offset])
+        trades = [dict(row) for row in cursor.fetchall()]
+        
+        return trades, total
+    except sqlite3.OperationalError:
+        return [], 0
+    finally:
+        conn.close()
+
+
+def get_cycle_history(limit=50):
+    """Get recent cycle history."""
+    conn = get_db()
+    if not conn:
+        return []
+    try:
+        cursor = conn.execute(
+            """SELECT cycle, timestamp, direction, edge, our_confidence, status, price
+               FROM real_trades 
+               ORDER BY timestamp DESC 
+               LIMIT ?""",
+            (limit,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
+class DashboardHandler(SimpleHTTPRequestHandler):
+    """HTTP request handler for the dashboard."""
+    
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        
+        # Resolve markets before serving data
+        resolve_markets()
+        
+        if parsed.path == "/" or parsed.path == "/index.html":
+            self.serve_dashboard()
+        elif parsed.path == "/api/trades":
+            params = parse_qs(parsed.query)
+            limit = int(params.get("limit", [100])[0])
+            offset = int(params.get("offset", [0])[0])
+            trades, total = get_trades(limit, offset)
+            self.send_json({"trades": trades, "total": total})
+        elif parsed.path == "/api/stats":
+            stats = get_stats()
+            self.send_json(stats)
+        elif parsed.path == "/api/cycles":
+            params = parse_qs(parsed.query)
+            limit = int(params.get("limit", [50])[0])
+            cycles = get_cycle_history(limit)
+            self.send_json({"cycles": cycles})
+        elif parsed.path == "/api/all_trades":
+            params = parse_qs(parsed.query)
+            limit = int(params.get("limit", [50])[0])
+            offset = int(params.get("offset", [0])[0])
+            filter_type = params.get("filter", ["all"])[0]
+            trades, total = get_all_trades(limit, offset, filter_type)
+            self.send_json({"trades": trades, "total": total})
+        elif parsed.path == "/api/health":
+            self.send_json({
+                "status": "ok",
+                "db_exists": os.path.exists(DB_PATH),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+        else:
+            self.send_error(404)
+    
+    def serve_dashboard(self):
+        """Serve the main dashboard HTML."""
+        html = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTC Predictor - Trading Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0e27;
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1a1f3a 0%, #0a0e27 100%);
+            border-bottom: 2px solid #00d4ff;
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 28px;
+            color: #00d4ff;
+            margin-bottom: 5px;
+        }
+        .header .subtitle { color: #8892b0; font-size: 14px; }
+        .header .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status.online { background: #00ff8833; color: #00ff88; }
+        .status.offline { background: #ff444433; color: #ff4444; }
+        
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #1a1f3a;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #2a3050;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: #00d4ff;
+        }
+        .stat-card .label {
+            font-size: 12px;
+            color: #8892b0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .stat-card .value.positive { color: #00ff88; }
+        .stat-card .value.negative { color: #ff4444; }
+        .stat-card .value.neutral { color: #00d4ff; }
+        
+        /* Tables */
+        .table-container {
+            background: #1a1f3a;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #2a3050;
+            margin-bottom: 30px;
+            overflow-x: auto;
+        }
+        .table-title {
+            font-size: 18px;
+            color: #00d4ff;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #2a3050;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            text-align: left;
+            padding: 12px;
+            color: #8892b0;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid #2a3050;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #1a1f3a;
+            font-size: 14px;
+        }
+        tr:hover { background: #2a305033; }
+        
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .badge.up { background: #00ff8833; color: #00ff88; }
+        .badge.dn { background: #ff444433; color: #ff4444; }
+        .badge.hold { background: #ffaa0033; color: #ffaa00; }
+        .badge.filled { background: #00ff8833; color: #00ff88; }
+        .badge.live { background: #00d4ff33; color: #00d4ff; }
+        .badge.cancelled { background: #ff444433; color: #ff4444; }
+        
+        /* Refresh */
+        .refresh-btn {
+            background: #00d4ff;
+            color: #0a0e27;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .refresh-btn:hover { background: #00b8d4; }
+        
+        /* Filter buttons */
+        .filter-btn {
+            padding: 4px 12px;
+            background: #1a1040;
+            color: #6b7a8d;
+            border: 1px solid #2a1b5a;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .filter-btn:hover { background: #2a1b5a; color: #e040fb; }
+        .filter-btn.active { background: #2a1b5a; color: #e040fb; border-color: #e040fb; }
+        
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #8892b0;
+        }
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #00d4ff;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Last sync */
+        .sync-info {
+            text-align: right;
+            color: #8892b0;
+            font-size: 12px;
+            margin-bottom: 20px;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .stat-card .value { font-size: 22px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>📊 BTC Predictor Trading Dashboard</h1>
+            <div class="subtitle">Polymarket CLOB Real Trading Monitor</div>
+            <div style="margin-top: 10px;">
+                <span class="status online" id="status-badge">● LIVE</span>
+                <span style="margin-left: 15px; color: #8892b0; font-size: 12px;">
+                    Last sync: <span id="last-sync">--</span>
+                </span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div class="sync-info">Auto-refresh: 30s</div>
+            <button class="refresh-btn" onclick="refreshAll()">🔄 Refresh</button>
+        </div>
+        
+        <!-- Stats Grid -->
+        <div class="stats-grid" id="stats-grid">
+            <div class="loading">Loading stats...</div>
+        </div>
+        
+        <!-- Recent Trades -->
+        <div class=\"table-container\">
+            <div class=\"table-title\">📋 Recent Trades</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Direction</th>
+                        <th>Price</th>
+                        <th>Size</th>
+                        <th>Edge</th>
+                        <th>Confidence</th>
+                        <th>Status</th>
+                        <th>PnL</th>
+                    </tr>
+                </thead>
+                <tbody id=\"trades-body\">
+                    <tr><td colspan=\"8\" class=\"loading\">Loading trades...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- All Trades -->
+        <div class=\"table-container\">
+            <div class=\"table-title\">📋 All Trades (<span id=\"all-trades-total\">0</span>)</div>
+            <div style=\"margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;\">
+                <span style=\"color:#8892b0;font-size:12px;\">Filter:</span>
+                <button onclick=\"filterAllTrades('all')\" id=\"filter-all\" class=\"filter-btn active\">All</button>
+                <button onclick=\"filterAllTrades('resolved')\" id=\"filter-resolved\" class=\"filter-btn\">Resolved</button>
+                <button onclick=\"filterAllTrades('open')\" id=\"filter-open\" class=\"filter-btn\">Open</button>
+                <button onclick=\"filterAllTrades('UP')\" id=\"filter-UP\" class=\"filter-btn\">UP</button>
+                <span style=\"margin-left:auto;color:#8892b0;font-size:12px;\" id=\"all-trades-range\">Loading...</span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Time</th>
+                        <th>Direction</th>
+                        <th>Amount</th>
+                        <th>Price</th>
+                        <th>Odds</th>
+                        <th>P&L</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id=\"all-trades-body\">
+                    <tr><td colspan=\"8\" class=\"loading\">Loading...</td></tr>
+                </tbody>
+            </table>
+            <div style=\"margin-top:12px;display:flex;justify-content:center;gap:8px;\">
+                <button onclick=\"loadAllTradesPage(-1)\" id=\"all-trades-prev\" style=\"padding:6px 16px;background:#1a1040;color:#e040fb;border:1px solid #6a1b9a;border-radius:6px;cursor:pointer;\">← Prev</button>
+                <span style=\"padding:6px 12px;color:#8892b0;font-size:12px;\" id=\"all-trades-page\">Page 1</span>
+                <button onclick=\"loadAllTradesPage(1)\" id=\"all-trades-next\" style=\"padding:6px 16px;background:#1a1040;color:#e040fb;border:1px solid #6a1b9a;border-radius:6px;cursor:pointer;\">Next →</button>
+            </div>
+        </div>
+        
+        <!-- Cycle History -->
+        <div class="table-container">
+            <div class="table-title">🔄 Cycle History</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Cycle</th>
+                        <th>Time</th>
+                        <th>BTC Price</th>
+                        <th>Prediction</th>
+                        <th>Edge</th>
+                        <th>Confidence</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="cycles-body">
+                    <tr><td colspan="7" class="loading">Loading cycles...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = window.location.origin;
+        
+        async function fetchJSON(path) {
+            const res = await fetch(API_BASE + path);
+            return res.json();
+        }
+        
+        function formatTime(iso) {
+            if (!iso) return '--';
+            const d = new Date(iso);
+            return d.toLocaleString('zh-CN', { 
+                month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+        }
+        
+        function formatNumber(num, decimals = 2) {
+            if (num == null || isNaN(num)) return '--';
+            return Number(num).toFixed(decimals);
+        }
+        
+        async function loadStats() {
+            try {
+                const stats = await fetchJSON('/api/stats');
+                const grid = document.getElementById('stats-grid');
+                
+                const pnlClass = stats.total_pnl >= 0 ? 'positive' : 'negative';
+                
+                grid.innerHTML = `
+                    <div class="stat-card">
+                        <div class="label">Total Trades</div>
+                        <div class="value neutral">${stats.total_trades || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Filled Trades</div>
+                        <div class="value neutral">${stats.filled_trades || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Win Rate</div>
+                        <div class="value ${stats.win_rate >= 50 ? 'positive' : 'negative'}">${stats.win_rate || 0}%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Total PnL</div>
+                        <div class="value ${pnlClass}">$${formatNumber(stats.total_pnl)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Trades (24h)</div>
+                        <div class="value neutral">${stats.trades_24h || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Avg Edge</div>
+                        <div class="value ${stats.avg_edge >= 0 ? 'positive' : 'negative'}">${stats.avg_edge || 0}%</div>
+                    </div>
+                `;
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+        
+        async function loadTrades() {
+            try {
+                const data = await fetchJSON('/api/trades?limit=20');
+                const tbody = document.getElementById('trades-body');
+                
+                if (!data.trades || data.trades.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#8892b0;">No trades yet. Waiting for first trade...</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.trades.map(t => `
+                    <tr>
+                        <td>${formatTime(t.timestamp)}</td>
+                        <td><span class="badge ${t.direction ? t.direction.toLowerCase() : 'hold'}">${t.direction || 'HOLD'}</span></td>
+                        <td>$${formatNumber(t.price)}</td>
+                        <td>${formatNumber(t.size)}</td>
+                        <td class="${t.edge >= 0 ? 'positive' : 'negative'}">${formatNumber(t.edge)}%</td>
+                        <td>${formatNumber(t.our_confidence)}%</td>
+                        <td><span class="badge ${t.status}">${t.status || '--'}</span></td>
+                        <td class="${t.pnl >= 0 ? 'positive' : 'negative'}">$${formatNumber(t.pnl)}</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load trades:', e);
+            }
+        }
+        
+        async function loadCycles() {
+            try {
+                const data = await fetchJSON('/api/cycles?limit=30');
+                const tbody = document.getElementById('cycles-body');
+                
+                if (!data.cycles || data.cycles.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#8892b0;">No cycles recorded yet...</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.cycles.map(c => `
+                    <tr>
+                        <td>#${c.cycle || '--'}</td>
+                        <td>${formatTime(c.timestamp)}</td>
+                        <td>$${formatNumber(c.price)}</td>
+                        <td><span class="badge ${c.direction ? c.direction.toLowerCase() : 'hold'}">${c.direction || 'HOLD'}</span></td>
+                        <td class="${c.edge >= 0 ? 'positive' : 'negative'}">${formatNumber(c.edge)}%</td>
+                        <td>${formatNumber(c.our_confidence)}%</td>
+                        <td>${c.status === 'filled' ? '✅ Trade' : '⏸ Hold'}</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load cycles:', e);
+            }
+        }
+        
+        // All Trades table state
+        let allTradesPage = 0;
+        let allTradesFilter = 'all';
+        const ALL_TRADES_PER_PAGE = 50;
+        
+        function filterAllTrades(filter) {
+            allTradesFilter = filter;
+            allTradesPage = 0;
+            // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            const btnId = 'filter-' + filter;
+            const btn = document.getElementById(btnId);
+            if (btn) btn.classList.add('active');
+            loadAllTradesPage(0);
+        }
+        
+        function loadAllTradesPage(direction) {
+            if (direction === -1 && allTradesPage > 0) allTradesPage--;
+            else if (direction === 1) allTradesPage++;
+            else if (direction === 0) allTradesPage = 0;
+            
+            const offset = allTradesPage * ALL_TRADES_PER_PAGE;
+            const url = `/api/all_trades?limit=${ALL_TRADES_PER_PAGE}&offset=${offset}&filter=${allTradesFilter}`;
+            
+            fetchJSON(url).then(data => {
+                const tbody = document.getElementById('all-trades-body');
+                const totalEl = document.getElementById('all-trades-total');
+                const rangeEl = document.getElementById('all-trades-range');
+                const pageEl = document.getElementById('all-trades-page');
+                
+                totalEl.textContent = data.total;
+                
+                const trades = data.trades || [];
+                const totalPages = Math.ceil(data.total / ALL_TRADES_PER_PAGE);
+                pageEl.textContent = `Page ${allTradesPage + 1} / ${totalPages}`;
+                
+                const startNum = offset + 1;
+                const endNum = Math.min(offset + trades.length, data.total);
+                rangeEl.textContent = `Showing ${startNum}-${endNum} of ${data.total}`;
+                
+                if (trades.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#8892b0;">No trades found</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = trades.map((t, idx) => {
+                    const pnlColor = t.pnl >= 0 ? 'positive' : 'negative';
+                    const statusColor = t.status === 'live' ? '#ffd740' : '#6b7a8d';
+                    const dirColor = t.direction === 'Up' ? '#00e676' : '#ff5252';
+                    const num = data.total - (allTradesPage * ALL_TRADES_PER_PAGE) - idx;
+                    
+                    return `
+                        <tr>
+                            <td style="color:#8892b0;">${num}</td>
+                            <td style="color:#8892b0;">${formatTime(t.timestamp)}</td>
+                            <td style="color:${dirColor}; font-weight:600;">${t.direction || '--'}</td>
+                            <td>$${formatNumber(t.size * t.price)}</td>
+                            <td style="color:#8892b0;">$${formatNumber(t.price)}</td>
+                            <td style="color:#ffd740; font-weight:600;">${t.price > 0 ? (1/t.price).toFixed(2) : '--'}x</td>
+                            <td style="color:${pnlColor}; font-weight:600;">${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + formatNumber(t.pnl) : '--'}</td>
+                            <td style="color:${statusColor};">${(t.status || '--').toUpperCase()}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }).catch(e => console.error('Failed to load all trades:', e));
+        }
+        
+        async function checkHealth() {
+            try {
+                const health = await fetchJSON('/api/health');
+                const badge = document.getElementById('status-badge');
+                if (health.db_exists) {
+                    badge.className = 'status online';
+                    badge.textContent = '● LIVE';
+                } else {
+                    badge.className = 'status offline';
+                    badge.textContent = '● DB NOT FOUND';
+                }
+                document.getElementById('last-sync').textContent = formatTime(health.timestamp);
+            } catch (e) {
+                console.error('Health check failed:', e);
+            }
+        }
+        
+        async function refreshAll() {
+            await Promise.all([loadStats(), loadTrades(), loadCycles(), checkHealth()]);
+            loadAllTradesPage(0);
+        }
+        
+        // Initial load
+        refreshAll();
+        loadAllTradesPage(0);
+        
+        // Auto-refresh every 30 seconds
+        setInterval(refreshAll, 30000);
+        setInterval(() => loadAllTradesPage(0), 30000);
+    </script>
+</body>
+</html>"""
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(html.encode('utf-8'))
+    
+    def send_json(self, data):
+        """Send JSON response."""
+        body = json.dumps(data, ensure_ascii=False).encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def main():
+    import argparse
+    global DB_PATH, PORT  # Move global declaration to the beginning
+    
+    parser = argparse.ArgumentParser(description='BTC Predictor Trading Dashboard')
+    parser.add_argument('--port', type=int, default=PORT, help='Port to run on')
+    parser.add_argument('--db', type=str, default=DB_PATH, help='Database path')
+    args = parser.parse_args()
+    
+    DB_PATH = args.db
+    PORT = args.port
+    
+    logger.info(f"Starting BTC Predictor Dashboard on port {PORT}")
+    logger.info(f"Database: {DB_PATH}")
+    
+    server = HTTPServer(('0.0.0.0', PORT), DashboardHandler)
+    logger.info(f"Dashboard running at http://0.0.0.0:{PORT}")
+    
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        logger.info("Dashboard stopped")
+        server.shutdown()
+
+
+if __name__ == "__main__":
+    main()
