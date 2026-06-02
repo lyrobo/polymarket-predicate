@@ -10,3 +10,9 @@ __pycache__/
 *.log
 *.pid
 node_modules/
+*.db-*
+*.db.backup
+*.db.bak*
+*.pkl
+*.tar.gz
+__pycache__/
